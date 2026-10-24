@@ -94,6 +94,8 @@ export interface VideoEngineState {
   mimeType?: string | null;
   /** The engine rebuilt itself with software decoders after a hardware failure. */
   softwareDecoding?: boolean;
+  /** The audio track's codec is unsupported, so the video plays without sound. */
+  audioUnavailable?: boolean;
   ready: boolean;
 }
 

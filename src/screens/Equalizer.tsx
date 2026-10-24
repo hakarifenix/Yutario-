@@ -16,8 +16,15 @@ export function EqualizerScreen() {
   const [localSpatial, setLocalSpatial] = useState(0);
 
   useEffect(() => {
-    if (!effects.hydrated) void effects.hydrate();
-  }, [effects]);
+    // Opening the panel is the only thing that binds the audio effects to the current session.
+    // Playback itself never touches audiofx any more.
+    void (async () => {
+      const store = useAudioEffects.getState();
+      if (!store.hydrated) await store.hydrate();
+      await useAudioEffects.getState().refresh();
+      if (useAudioEffects.getState().enabled) await useAudioEffects.getState().apply({});
+    })();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {

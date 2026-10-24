@@ -75,7 +75,11 @@ already passed.
   paths are verified to exist and be readable, and Capacitor's `_capacitor_file_` URLs are
   unwrapped.
 - Hardware decoder failures are retried once with software codecs at the same position, with
-  Media3's own decoder fallback enabled underneath.
+  Media3's own decoder fallback enabled underneath. If the video still decodes but only the *audio*
+  track is unsupported (AC3/DTS/TrueHD are common), playback continues silently with a visible
+  notice instead of refusing the file.
+- A 12 s prepare watchdog reports a stalled prepare with the container, decoder and audio state, so
+  a video that never starts produces a real error instead of an endless spinner.
 - Resume position for videos, and an error overlay that prints the real ExoPlayer error code and
   cause chain (plus a retry button) instead of only a generic message.
 - “Video compatibility mode” fallback (native surface above the WebView with Media3's own
@@ -84,7 +88,11 @@ already passed.
 ### Audio effects
 - `android.media.audiofx` Equalizer, BassBoost and Virtualizer bound to the ExoPlayer audio session.
 - Device presets plus custom band levels; unsupported effects are detected and explained instead
-  of faked. Settings are persisted and re-applied when playback starts.
+  of faked. Settings are persisted locally.
+- Effects are **only** created when the effects panel is opened or the equalizer is switched on, and
+  only when the device advertises that effect. Nothing on the playback path touches `audiofx`:
+  building an effect inside ExoPlayer's audio-session callback crashed the whole process on some
+  devices, and the app used to push the (untouched) settings on every playback start.
 
 ### Interface
 - Clean white surfaces with fresh emerald/teal accents (light theme by default), plus a green-tinted

@@ -478,11 +478,22 @@ public final class PlaybackController implements Player.Listener {
   @Override
   public void onAudioSessionIdChanged(int newAudioSessionId) {
     audioSessionId = newAudioSessionId;
-    // Audio effects are created on demand only. Building an Equalizer/BassBoost/Virtualizer on
-    // every session change is the classic cause of device-specific audiofs crashes during the
-    // first second of playback, and it is pointless while the panel is untouched.
+    // Audio effects are never created here. This callback fires while ExoPlayer is still wiring up
+    // its AudioTrack, and building an Equalizer/BassBoost/Virtualizer at that moment is what took
+    // the whole process down on some devices. An existing, user-enabled effect is only rebound,
+    // and only after the session has settled.
     if (effects.isEnabled()) {
-      effects.attach(newAudioSessionId);
+      final int session = newAudioSessionId;
+      handler.postDelayed(
+        () -> {
+          try {
+            effects.reattachIfActive(session);
+          } catch (Exception error) {
+            Diagnostics.log(context, "audio", "could not rebind the audio effects", error);
+          }
+        },
+        900
+      );
     }
     emit();
   }

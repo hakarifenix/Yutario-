@@ -137,17 +137,6 @@ function useNotificationPrompt() {
   }, [isPlaying]);
 }
 
-function useReapplyEffects() {
-  const isPlaying = usePlayer((state) => state.isPlaying);
-  useEffect(() => {
-    if (!isPlaying || !isNativePlatform) return;
-    const effects = useAudioEffects.getState();
-    if (!effects.hydrated) return;
-    void effects.apply({});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying]);
-}
-
 function Shell() {
   const ready = useBootstrap();
   const language = useSettings((state) => state.language);
@@ -159,7 +148,6 @@ function Shell() {
   useAndroidBack();
   useShareIntents();
   useNotificationPrompt();
-  useReapplyEffects();
 
   const hideChrome = location.pathname === '/player' || location.pathname.startsWith('/video/');
 

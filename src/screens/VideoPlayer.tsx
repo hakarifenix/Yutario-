@@ -579,6 +579,14 @@ export function VideoPlayerScreen() {
         </ul>
       </Sheet>
 
+      {state.audioUnavailable && !state.error ? (
+        <div className="pointer-events-none absolute inset-x-4 top-[calc(env(safe-area-inset-top,0px)+54px)] flex justify-center">
+          <p className="rounded-full bg-black/70 px-3 py-1.5 text-center text-[10.5px] font-semibold text-white/90">
+            {t('video.audioUnsupported')}
+          </p>
+        </div>
+      ) : null}
+
       {state.isBuffering && !state.error ? (
         <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <span className="block h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />

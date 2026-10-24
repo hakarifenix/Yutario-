@@ -27,6 +27,8 @@ public final class AudioEffectsManager {
 
   private int sessionId = 0;
   private boolean enabled = false;
+  /** True once this process has successfully built an effect over an audio session. */
+  private boolean everCreated = false;
   private int preset = -1;
   private short[] bandLevels = new short[0];
   private short bassStrength = 0;
@@ -40,16 +42,50 @@ public final class AudioEffectsManager {
   }
 
   /**
-   * Binds the effects to an audio session. Called when playback starts with the equalizer enabled and
-   * whenever the equalizer panel is opened, never eagerly on every session change.
+   * Explicit user action: the effects panel was opened, or the user switched the equalizer on.
+   * This is the only place that is allowed to build a new Equalizer/BassBoost/Virtualizer.
    */
-  public synchronized void attach(int newSessionId) {
+  public synchronized void attachForPanel(int newSessionId) {
+    attach(newSessionId);
+  }
+
+  /**
+   * Called when ExoPlayer binds a new audio session. Only rebinds effects that already exist for
+   * this process and that the user has switched on.
+   *
+   * <p>Creating an effect inside ExoPlayer's session callback runs while the AudioTrack is still
+   * being wired up; on devices with a broken audio effect chain that kills the process before any
+   * Java code can catch it. Worse, the web layer used to push the equalizer settings on every
+   * playback start, so an untouched equalizer still built three effects at the exact moment the
+   * user pressed play. Effects are now only ever created for a user who asked for them.
+   */
+  public synchronized void reattachIfActive(int newSessionId) {
+    if (!enabled || !everCreated) {
+      // Nothing is bound, so remember the session for the panel and leave the audio path alone.
+      if (newSessionId > 0) sessionId = newSessionId;
+      return;
+    }
+    attach(newSessionId);
+  }
+
+  private void attach(int newSessionId) {
     if (newSessionId <= 0) return;
     if (newSessionId == sessionId && equalizer != null) return;
+    // Never build an effect the platform does not advertise: constructing one on a device without
+    // the effect chain is exactly the native call that cannot be caught in Java.
+    if (!deviceSupports(AudioEffect.EFFECT_TYPE_EQUALIZER)) {
+      release();
+      sessionId = newSessionId;
+      reason = "This device does not provide an equalizer audio effect";
+      return;
+    }
+    boolean supportsBass = deviceSupports(AudioEffect.EFFECT_TYPE_BASS_BOOST);
+    boolean supportsVirtualizer = deviceSupports(AudioEffect.EFFECT_TYPE_VIRTUALIZER);
     release();
     sessionId = newSessionId;
     try {
       equalizer = new Equalizer(0, sessionId);
+      everCreated = true;
       equalizer.setEnabled(enabled);
       if (bandLevels.length == equalizer.getNumberOfBands()) {
         short[] range = equalizer.getBandLevelRange();
@@ -65,22 +101,31 @@ public final class AudioEffectsManager {
       equalizer = null;
       reason = safeMessage(error);
     }
-    try {
-      bassBoost = new BassBoost(0, sessionId);
-      bassBoost.setStrength(bassStrength);
-      bassBoost.setEnabled(enabled);
-    } catch (Exception error) {
-      bassBoost = null;
-      reason = safeMessage(error);
+    if (supportsBass) {
+      try {
+        bassBoost = new BassBoost(0, sessionId);
+        bassBoost.setStrength(bassStrength);
+        bassBoost.setEnabled(enabled);
+      } catch (Exception error) {
+        bassBoost = null;
+        reason = safeMessage(error);
+      }
     }
-    try {
-      virtualizer = new Virtualizer(0, sessionId);
-      virtualizer.setStrength(virtualizerStrength);
-      virtualizer.setEnabled(enabled);
-    } catch (Exception error) {
-      virtualizer = null;
-      reason = safeMessage(error);
+    if (supportsVirtualizer) {
+      try {
+        virtualizer = new Virtualizer(0, sessionId);
+        virtualizer.setStrength(virtualizerStrength);
+        virtualizer.setEnabled(enabled);
+      } catch (Exception error) {
+        virtualizer = null;
+        reason = safeMessage(error);
+      }
     }
+  }
+
+  /** True once an effect was created in this process, i.e. the device survived it. */
+  public synchronized boolean isBound() {
+    return equalizer != null;
   }
 
   private static String safeMessage(Exception error) {

@@ -178,6 +178,7 @@ export const en = {
   'video.nativeFallback': 'Native video controls',
   'video.subtitleOffsetUnsupported': 'Subtitle delay is not supported by the playback engine.',
   'video.retry': 'Try again',
+  'video.audioUnsupported': 'No sound: this audio format is not supported on this device.',
 
   'settings.title': 'Settings',
   'settings.appearance': 'Appearance',

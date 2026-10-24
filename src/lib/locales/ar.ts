@@ -181,6 +181,7 @@ export const ar: Record<TranslationKey, string> = {
   'video.nativeFallback': 'عناصر تحكم الفيديو الأصلية',
   'video.subtitleOffsetUnsupported': 'تأخير الترجمة غير مدعوم في محرك التشغيل.',
   'video.retry': 'إعادة المحاولة',
+  'video.audioUnsupported': 'بدون صوت: صيغة الصوت هذه غير مدعومة على هذا الجهاز.',
 
   'settings.title': 'الإعدادات',
   'settings.appearance': 'المظهر',

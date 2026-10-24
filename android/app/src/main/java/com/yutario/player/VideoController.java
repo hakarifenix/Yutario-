@@ -77,6 +77,9 @@ public final class VideoController implements Player.Listener {
   private boolean keepScreenOn = false;
   private boolean softwareFallback = false;
   private boolean fallbackAttempted = false;
+  /** The audio track could not be decoded, so the video is played silently. */
+  private boolean audioDisabled = false;
+  private boolean audioFallbackAttempted = false;
   private int originalOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
   @Nullable
   private String currentUri;
@@ -106,6 +109,37 @@ public final class VideoController implements Player.Listener {
       } else {
         tickerRunning = false;
       }
+    }
+  };
+
+  /**
+   * A local file never needs more than a moment to prepare. When ExoPlayer stays buffering (or idle)
+   * the UI used to spin forever with the MediaStore duration and no error at all, which is exactly
+   * the "video never starts" report. This reports the stall with the container and decoder state
+   * instead of hanging.
+   */
+  private final Runnable prepareWatchdog = new Runnable() {
+    @Override
+    public void run() {
+      int playbackState = player.getPlaybackState();
+      if (
+        lastError != null ||
+        playbackState == Player.STATE_READY ||
+        playbackState == Player.STATE_ENDED
+      ) {
+        return;
+      }
+      fail(
+        "PREPARE_TIMEOUT",
+        "ExoPlayer stayed in " +
+        playbackStateName(playbackState) +
+        " for 12s. container=" +
+        detectedMime +
+        " software=" +
+        softwareFallback +
+        " audioDisabled=" +
+        audioDisabled
+      );
     }
   };
 
@@ -156,6 +190,7 @@ public final class VideoController implements Player.Listener {
       out.put("errorDetail", lastErrorDetail == null ? JSONObject.NULL : lastErrorDetail);
       out.put("mimeType", detectedMime == null ? JSONObject.NULL : detectedMime);
       out.put("softwareDecoding", softwareFallback);
+      out.put("audioUnavailable", audioDisabled);
       out.put("visible", visible);
     } catch (JSONException ignored) {
       /* primitives only */
@@ -218,6 +253,13 @@ public final class VideoController implements Player.Listener {
     detectedMime = null;
     currentUri = requested;
     playableUri = null;
+    // Every video starts from a clean engine state. Leaving these set meant that after one
+    // decoder failure every following video was forced into software decoding and could no
+    // longer fall back at all.
+    fallbackAttempted = false;
+    softwareFallback = false;
+    audioFallbackAttempted = false;
+    audioDisabled = false;
 
     try {
       ensureViews();
@@ -247,8 +289,13 @@ public final class VideoController implements Player.Listener {
     Uri uri = resolvePlayableUri(currentUri);
     playableUri = uri.toString();
     detectedMime = detectMimeType(uri);
+    // A silence fallback from a previous file must not leak into this one.
+    player.setTrackSelectionParameters(
+      player.getTrackSelectionParameters().buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build()
+    );
     player.setMediaItem(buildMediaItem(uri));
     player.prepare();
+    scheduleWatchdog();
     player.setPlaybackSpeed(speed);
     if (startPosition > 0) player.seekTo(startPosition);
     player.setPlayWhenReady(autoPlay);
@@ -464,6 +511,7 @@ public final class VideoController implements Player.Listener {
         player.prepare();
         player.seekTo(position);
         player.setPlayWhenReady(playWhenReady);
+        scheduleWatchdog();
       } catch (Exception error) {
         Diagnostics.log(activity, "video", "subtitle reload failed", error);
         fail("MEDIA_OPEN_FAILED", describe(error));
@@ -513,6 +561,30 @@ public final class VideoController implements Player.Listener {
     if (tickerRunning) return;
     tickerRunning = true;
     handler.post(ticker);
+  }
+
+  private void scheduleWatchdog() {
+    handler.removeCallbacks(prepareWatchdog);
+    handler.postDelayed(prepareWatchdog, 12_000);
+  }
+
+  private void cancelWatchdog() {
+    handler.removeCallbacks(prepareWatchdog);
+  }
+
+  private static String playbackStateName(int playbackState) {
+    switch (playbackState) {
+      case Player.STATE_IDLE:
+        return "IDLE";
+      case Player.STATE_BUFFERING:
+        return "BUFFERING";
+      case Player.STATE_READY:
+        return "READY";
+      case Player.STATE_ENDED:
+        return "ENDED";
+      default:
+        return "STATE_" + playbackState;
+    }
   }
 
   public JSONObject getTracks() {
@@ -585,6 +657,7 @@ public final class VideoController implements Player.Listener {
     visible = false;
     handler.removeCallbacks(ticker);
     tickerRunning = false;
+    cancelWatchdog();
     try {
       player.pause();
       player.stop();
@@ -604,6 +677,11 @@ public final class VideoController implements Player.Listener {
     playableUri = null;
     lastError = null;
     lastErrorDetail = null;
+    fallbackAttempted = false;
+    softwareFallback = false;
+    audioFallbackAttempted = false;
+    audioDisabled = false;
+    detectedMime = null;
     applyKeepScreenOn(false);
     unlockOrientation();
     emit();
@@ -622,6 +700,7 @@ public final class VideoController implements Player.Listener {
   // ---------------------------------------------------------------- error handling
 
   private void fail(String code, String detail) {
+    cancelWatchdog();
     lastError = code;
     lastErrorDetail = detail;
     Diagnostics.log(activity, "video", "Failure " + code + " for " + MediaUris.describe(playableUri == null ? currentUri : playableUri) + ": " + detail);
@@ -672,6 +751,7 @@ public final class VideoController implements Player.Listener {
     if (playbackState == Player.STATE_READY) {
       lastError = null;
       lastErrorDetail = null;
+      cancelWatchdog();
       startTicker();
     }
     emit();
@@ -693,7 +773,60 @@ public final class VideoController implements Player.Listener {
       retryWithSoftwareDecoders(name, detail);
       return;
     }
+    // A file whose *audio* codec is unsupported (AC3, DTS, TrueHD in MP4/MKV are common) fails the
+    // whole playback even when the video decodes fine. Playing it silently beats refusing it.
+    if ((isDecoderFailure(code) || isAudioTrackFailure(code)) && !audioFallbackAttempted && hasVideoTrack()) {
+      retryWithoutAudio(name, detail);
+      return;
+    }
     fail(name, buildUserDetail(code, name, detail));
+  }
+
+  private boolean hasVideoTrack() {
+    try {
+      for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
+        if (group.getType() == C.TRACK_TYPE_VIDEO) return true;
+      }
+    } catch (Exception error) {
+      Diagnostics.log(activity, "video", "could not inspect tracks", error);
+    }
+    return false;
+  }
+
+  private static boolean isAudioTrackFailure(int errorCode) {
+    return errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED
+      || errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED;
+  }
+
+  /**
+   * Rebuilds the current item with the audio track disabled. ExoPlayer disables the failing
+   * renderer's stream and keeps video playback alive; the UI is told so it can say there is no
+   * sound instead of showing a decoding error for a perfectly watchable video.
+   */
+  private void retryWithoutAudio(String name, String detail) {
+    audioFallbackAttempted = true;
+    audioDisabled = true;
+    long position = Math.max(0, player.getCurrentPosition());
+    Diagnostics.log(
+      activity,
+      "video",
+      "Retrying without the audio track after " + name + ": " + detail
+    );
+    handler.post(() -> {
+      try {
+        player.setTrackSelectionParameters(
+          player.getTrackSelectionParameters().buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+        );
+        player.prepare();
+        if (position > 0) player.seekTo(position);
+        player.setPlayWhenReady(true);
+        scheduleWatchdog();
+        emit();
+      } catch (Exception error) {
+        Diagnostics.log(activity, "video", "silent playback fallback failed", error);
+        fail("AUDIO_FALLBACK_FAILED", describe(error));
+      }
+    });
   }
 
   private String buildUserDetail(int code, String name, String detail) {
@@ -733,6 +866,7 @@ public final class VideoController implements Player.Listener {
           player.seekTo(position);
           player.setPlayWhenReady(wasPlaying);
         }
+        scheduleWatchdog();
         emit();
       } catch (Exception error) {
         Diagnostics.log(activity, "video", "software fallback failed", error);

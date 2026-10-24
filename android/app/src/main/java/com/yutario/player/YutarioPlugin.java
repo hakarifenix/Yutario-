@@ -527,9 +527,9 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
 
   @PluginMethod
   public void getEqualizer(PluginCall call) {
-    // Effects are bound when the panel is opened, not at the start of every track.
+    // Effects are bound when the panel is opened, never at the start of a track.
     try {
-      playback.getEffects().attach(playback.getAudioSessionId());
+      playback.getEffects().attachForPanel(playback.getAudioSessionId());
     } catch (Exception error) {
       Diagnostics.log(getContext(), "equalizer", "could not bind audio effects", error);
     }
@@ -544,7 +544,11 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
     Integer bass = call.getInt("bassBoost", null);
     Integer virtualizer = call.getInt("virtualizer", null);
     try {
-      playback.getEffects().attach(playback.getAudioSessionId());
+      // A settings push that only stores values must never build an effect: the web layer used to
+      // send one on every playback start. Only an explicit "switch the equalizer on" does.
+      if (Boolean.TRUE.equals(enabled)) {
+        playback.getEffects().attachForPanel(playback.getAudioSessionId());
+      }
       resolve(call, playback.getEffects().apply(enabled, preset, bands, bass, virtualizer));
     } catch (Exception error) {
       Diagnostics.log(getContext(), "equalizer", "could not apply audio effects", error);

@@ -55,14 +55,12 @@ export const useAudioEffects = create<EffectsStore>((set, get) => ({
   error: null,
 
   hydrate: async () => {
+    // Storage only. Touching the native audio effects is the panel's job: building an Equalizer
+    // when the app or a track starts is what crashed playback on devices with a broken audio
+    // effect chain, so the playback path never asks for them.
     const stored = await readJson<Partial<EffectsSettings>>(STORAGE_KEY, {});
     const settings: EffectsSettings = { ...DEFAULTS, ...stored };
     set({ ...settings, hydrated: true });
-    const state = await get().refresh();
-    if (state?.supported) {
-      const applied = await pushToNative(settings);
-      if (applied) set({ nativeState: applied });
-    }
   },
 
   refresh: async () => {

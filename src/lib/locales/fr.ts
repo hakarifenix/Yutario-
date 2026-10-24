@@ -182,6 +182,7 @@ export const fr: Record<TranslationKey, string> = {
   'video.nativeFallback': 'Commandes vidéo natives',
   'video.subtitleOffsetUnsupported': 'Le décalage des sous-titres n’est pas pris en charge par le moteur de lecture.',
   'video.retry': 'Réessayer',
+  'video.audioUnsupported': 'Sans son : ce format audio n’est pas pris en charge sur cet appareil.',
 
   'settings.title': 'Réglages',
   'settings.appearance': 'Apparence',
