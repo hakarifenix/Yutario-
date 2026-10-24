@@ -56,14 +56,20 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 11076708
-
-      - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "Android SDK at $SDK"
+          SDKMANAGER=$(find "$SDK" -path '*/cmdline-tools/*/bin/sdkmanager' -print -quit)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $SDK"
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
       - name: Make Gradle wrapper executable
         run: chmod +x android/gradlew
