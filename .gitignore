@@ -15,3 +15,7 @@ coverage/
 
 # Local build output kept for convenience, not committed
 artifacts/*.apk
+
+# python build artifacts
+__pycache__/
+*.pyc
