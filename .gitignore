@@ -1,0 +1,17 @@
+node_modules/
+dist/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+*.log
+.DS_Store
+coverage/
+.vscode/
+.idea/
+
+# Local build output kept for convenience, not committed
+artifacts/*.apk
