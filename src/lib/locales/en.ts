@@ -177,6 +177,7 @@ export const en = {
   'video.orientation': 'Rotate',
   'video.nativeFallback': 'Native video controls',
   'video.subtitleOffsetUnsupported': 'Subtitle delay is not supported by the playback engine.',
+  'video.retry': 'Try again',
 
   'settings.title': 'Settings',
   'settings.appearance': 'Appearance',
@@ -209,6 +210,13 @@ export const en = {
   'settings.notGranted': 'Not granted',
   'settings.privacy': 'Privacy',
   'settings.privacyBody': 'Yutario never uploads your files. There is no account and no cloud server.',
+  'settings.diagnostics': 'Playback diagnostics',
+  'settings.diagnosticsHint': 'Native player errors and crashes recorded on this device.',
+  'settings.diagnosticsEmpty': 'No errors recorded yet.',
+  'settings.diagnosticsCopy': 'Copy log',
+  'settings.diagnosticsCopyFailed': 'Copying is blocked on this device.',
+  'settings.diagnosticsCopied': 'Log copied',
+  'settings.diagnosticsClear': 'Clear log',
 
   'equalizer.title': 'Equalizer & audio effects',
   'equalizer.unsupported': 'Audio effects are not available on this device or require a hardware equalizer.',

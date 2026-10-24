@@ -72,6 +72,7 @@ const resetPlayer = () => {
     shuffle: false,
     speed: 1,
     error: null,
+    errorDetail: null,
     ended: false,
     sleepTimer: { endsAt: null, minutes: null, stopAfterTrack: false },
     ready: true,
@@ -209,5 +210,36 @@ describe('sleep timer', () => {
     await usePlayer.getState().setSleepTimer(null, true);
     expect(usePlayer.getState().sleepTimer.endsAt).toBeNull();
     expect(usePlayer.getState().sleepTimer.stopAfterTrack).toBe(true);
+  });
+});
+
+describe('playback start failures', () => {
+  it('keeps the queue alive and reports the real reason when the engine rejects', async () => {
+    engineMock.play.mockRejectedValueOnce(new Error('Playback could not start: SecurityException'));
+    await usePlayer.getState().playNow([track('a'), track('b')], 1);
+
+    const state = usePlayer.getState();
+    expect(state.queue.map((item) => item.id)).toEqual(['a', 'b']);
+    expect(state.isPlaying).toBe(false);
+    expect(state.error).toBe('START_FAILED');
+    expect(state.errorDetail).toContain('SecurityException');
+  });
+
+  it('mirrors the native error detail so the UI can show the codec that failed', () => {
+    usePlayer.getState().syncEngine(
+      engineState({
+        error: 'ERROR_CODE_DECODING_FORMAT_UNSUPPORTED',
+        errorDetail: '1004 — MediaCodecAudioRenderer: E-AC-3',
+      }),
+    );
+    expect(usePlayer.getState().error).toBe('ERROR_CODE_DECODING_FORMAT_UNSUPPORTED');
+    expect(usePlayer.getState().errorDetail).toBe('1004 — MediaCodecAudioRenderer: E-AC-3');
+  });
+
+  it('clears the detail together with the error', () => {
+    usePlayer.setState({ error: 'PLAYER_ERROR', errorDetail: 'boom' });
+    usePlayer.getState().clearError();
+    expect(usePlayer.getState().error).toBeNull();
+    expect(usePlayer.getState().errorDetail).toBeNull();
   });
 });

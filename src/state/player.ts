@@ -36,6 +36,8 @@ interface PlayerStore {
   shuffle: boolean;
   speed: number;
   error: string | null;
+  /** Readable cause reported by the engine (ExoPlayer error code and cause chain). */
+  errorDetail: string | null;
   ended: boolean;
   sleepTimer: SleepTimerState;
   ready: boolean;
@@ -89,6 +91,7 @@ export const usePlayer = create<PlayerStore>((set, get) => ({
   shuffle: false,
   speed: 1,
   error: null,
+  errorDetail: null,
   ended: false,
   sleepTimer: EMPTY_TIMER,
   ready: false,
@@ -159,6 +162,7 @@ export const usePlayer = create<PlayerStore>((set, get) => ({
       speed: state.speed,
       ended: state.ended,
       error: state.error ?? null,
+      errorDetail: state.errorDetail ?? null,
       sleepTimer: { endsAt, minutes, stopAfterTrack: Boolean(state.stopAfterTrack) },
       ready: true,
     });
@@ -199,9 +203,17 @@ export const usePlayer = create<PlayerStore>((set, get) => ({
       durationMs: item.durationMs,
       isPlaying: options?.autoPlay !== false,
       error: null,
+      errorDetail: null,
       ended: false,
     });
-    await engine.play(items, index, { positionMs, autoPlay: options?.autoPlay !== false });
+    try {
+      await engine.play(items, index, { positionMs, autoPlay: options?.autoPlay !== false });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('playback could not start', error);
+      set({ isPlaying: false, error: 'START_FAILED', errorDetail: message });
+      return;
+    }
     saveSession();
   },
 
@@ -293,6 +305,8 @@ export const usePlayer = create<PlayerStore>((set, get) => ({
       isPlaying: false,
       positionMs: 0,
       durationMs: 0,
+      error: null,
+      errorDetail: null,
       ended: false,
       sleepTimer: EMPTY_TIMER,
     });
@@ -310,7 +324,7 @@ export const usePlayer = create<PlayerStore>((set, get) => ({
     });
   },
 
-  clearError: () => set({ error: null }),
+  clearError: () => set({ error: null, errorDetail: null }),
 
   currentItem: () => get().queue[get().index],
 }));

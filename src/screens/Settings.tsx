@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Bell,
   ChevronRight,
+  FileText,
   FolderSearch,
   Info,
   Languages,
@@ -42,6 +43,42 @@ export function SettingsScreen() {
 
   const [speedOpen, setSpeedOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [diagnostics, setDiagnostics] = useState('');
+
+  const openDiagnostics = async () => {
+    if (isNativePlatform) {
+      try {
+        const result = await YutarioNative.getDiagnostics();
+        setDiagnostics(result?.log?.trim() ?? '');
+      } catch (error) {
+        console.error('could not read diagnostics', error);
+        setDiagnostics('');
+      }
+    }
+    setDiagnosticsOpen(true);
+  };
+
+  const copyDiagnostics = async () => {
+    const text = diagnostics || t('settings.diagnosticsEmpty');
+    try {
+      await navigator.clipboard.writeText(text);
+      notify(t('settings.diagnosticsCopied'), 'success');
+    } catch (error) {
+      console.error('clipboard unavailable', error);
+      notify(t('settings.diagnosticsCopyFailed'), 'error');
+    }
+  };
+
+  const clearDiagnostics = async () => {
+    try {
+      await YutarioNative.clearDiagnostics();
+    } catch (error) {
+      console.error('could not clear diagnostics', error);
+    }
+    setDiagnostics('');
+    notify(t('settings.cleared'));
+  };
 
   const themes: { value: ThemeMode; label: string; icon: ReactNode }[] = [
     { value: 'dark', label: t('settings.themeDark'), icon: <Moon size={14} /> },
@@ -211,6 +248,22 @@ export function SettingsScreen() {
           </div>
           <p className="mt-1 text-[11.5px] leading-relaxed text-muted">{t('settings.privacyBody')}</p>
         </div>
+        {isNativePlatform ? (
+          <button
+            type="button"
+            onClick={() => void openDiagnostics()}
+            className="tap flex w-full items-center gap-3 rounded-2xl border border-line/60 bg-surface px-3.5 py-3 text-start"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-2 text-accent">
+              <FileText size={17} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-semibold text-ink">{t('settings.diagnostics')}</span>
+              <span className="block text-[11px] text-muted">{t('settings.diagnosticsHint')}</span>
+            </span>
+            <ChevronRight size={16} className="text-muted rtl:rotate-180" />
+          </button>
+        ) : null}
         <div className="flex items-center gap-2 px-1 py-2 text-[11px] text-muted">
           <Info size={13} />
           {t('settings.version')} {APP_VERSION} · {t('settings.storage')}
@@ -237,6 +290,35 @@ export function SettingsScreen() {
             </li>
           ))}
         </ul>
+      </Sheet>
+
+      <Sheet
+        open={diagnosticsOpen}
+        onClose={() => setDiagnosticsOpen(false)}
+        title={t('settings.diagnostics')}
+      >
+        <pre
+          dir="ltr"
+          className="mb-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-surface-2 p-3 text-[10px] leading-relaxed text-ink"
+        >
+          {diagnostics || t('settings.diagnosticsEmpty')}
+        </pre>
+        <div className="flex gap-2 pb-2">
+          <button
+            type="button"
+            onClick={() => void copyDiagnostics()}
+            className="tap flex-1 rounded-xl bg-accent px-3 py-2.5 text-[12px] font-semibold text-white"
+          >
+            {t('settings.diagnosticsCopy')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void clearDiagnostics()}
+            className="tap flex-1 rounded-xl border border-line px-3 py-2.5 text-[12px] font-semibold text-danger"
+          >
+            {t('settings.diagnosticsClear')}
+          </button>
+        </div>
       </Sheet>
 
       <Dialog

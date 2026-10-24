@@ -72,6 +72,10 @@ export interface EngineState {
   speed: number;
   ended: boolean;
   error?: string | null;
+  /** Raw ExoPlayer failure, kept separate so the UI can show a readable reason. */
+  errorDetail?: string | null;
+  /** True when ExoPlayer is allowed to retry a failing hardware decoder in software. */
+  decoderFallback?: boolean;
   sleepTimerEndsAt?: number | null;
   stopAfterTrack?: boolean;
 }
@@ -84,6 +88,12 @@ export interface VideoEngineState {
   bufferedMs: number;
   ended: boolean;
   error?: string | null;
+  /** Error code plus cause chain reported by the native video engine. */
+  errorDetail?: string | null;
+  /** Container type reported by the provider, useful when a codec is unsupported. */
+  mimeType?: string | null;
+  /** The engine rebuilt itself with software decoders after a hardware failure. */
+  softwareDecoding?: boolean;
   ready: boolean;
 }
 

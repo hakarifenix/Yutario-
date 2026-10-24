@@ -42,6 +42,7 @@ export function FullPlayerScreen() {
   const shuffle = usePlayer((state) => state.shuffle);
   const speed = usePlayer((state) => state.speed);
   const error = usePlayer((state) => state.error);
+  const errorDetail = usePlayer((state) => state.errorDetail);
   const sleepTimer = usePlayer((state) => state.sleepTimer);
   const togglePlay = usePlayer((state) => state.togglePlay);
   const next = usePlayer((state) => state.next);
@@ -154,7 +155,21 @@ export function FullPlayerScreen() {
 
         {error ? (
           <div className="mb-3 rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-[11.5px] leading-relaxed text-ink">
-            {t('player.error')}
+            <p className="m-0">{t('player.error')}</p>
+            {errorDetail ? (
+              <p className="m-0 mt-1 break-words text-[10.5px] text-muted" dir="ltr">
+                {errorDetail}
+              </p>
+            ) : null}
+            {error === 'PLAYER_ERROR' || error === 'START_FAILED' ? (
+              <button
+                type="button"
+                onClick={() => void next()}
+                className="tap mt-2 rounded-lg bg-accent px-3 py-1.5 text-[11px] font-semibold text-white"
+              >
+                {t('common.next')}
+              </button>
+            ) : null}
           </div>
         ) : null}
 

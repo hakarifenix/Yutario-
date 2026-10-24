@@ -1,17 +1,18 @@
 package com.yutario.player;
 
 import android.app.Activity;
+import android.content.ContentResolver;
 import android.content.pm.ActivityInfo;
+import android.content.res.AssetFileDescriptor;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.WebView;
 import androidx.annotation.Nullable;
-import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MediaMetadata;
@@ -22,9 +23,15 @@ import androidx.media3.common.TrackGroup;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -35,17 +42,25 @@ import org.json.JSONObject;
 /**
  * Dedicated native video engine. The PlayerView sits behind the transparent WebView so the
  * React controls stay on top while decoding happens in ExoPlayer.
+ *
+ * <p>Every failure path is reported with the real ExoPlayer error code, the resolved URI and the
+ * detected container type. Decoder failures get one automatic retry with software codecs before
+ * the UI is told the file cannot be played.
  */
+@UnstableApi
 public final class VideoController implements Player.Listener {
 
   public interface StateListener {
     void onVideoState(JSONObject state);
   }
 
+  private static final String TAG = "YutarioVideo";
+
   private final Activity activity;
   private final WebView webView;
-  private final ExoPlayer player;
   private final Handler handler = new Handler(Looper.getMainLooper());
+
+  private ExoPlayer player;
 
   @Nullable
   private PlayerView playerView;
@@ -60,9 +75,13 @@ public final class VideoController implements Player.Listener {
   private boolean aboveWebView = false;
   private boolean nativeControls = false;
   private boolean keepScreenOn = false;
+  private boolean softwareFallback = false;
+  private boolean fallbackAttempted = false;
   private int originalOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
   @Nullable
   private String currentUri;
+  @Nullable
+  private String playableUri;
   @Nullable
   private String currentTitle;
   @Nullable
@@ -71,6 +90,10 @@ public final class VideoController implements Player.Listener {
   private String subtitleName;
   @Nullable
   private String lastError;
+  @Nullable
+  private String lastErrorDetail;
+  @Nullable
+  private String detectedMime;
   private float speed = 1f;
   private boolean tickerRunning = false;
 
@@ -89,8 +112,19 @@ public final class VideoController implements Player.Listener {
   public VideoController(Activity activity, WebView webView) {
     this.activity = activity;
     this.webView = webView;
-    this.player = new ExoPlayer.Builder(activity).build();
+    this.player = buildPlayer(false);
     this.player.addListener(this);
+  }
+
+  private ExoPlayer buildPlayer(boolean preferSoftware) {
+    DefaultRenderersFactory renderers = new DefaultRenderersFactory(activity)
+      .setEnableDecoderFallback(true);
+    if (preferSoftware) {
+      renderers.setMediaCodecSelector(new SoftwareFirstSelector());
+    }
+    ExoPlayer built = new ExoPlayer.Builder(activity, renderers).build();
+    built.setPlaybackSpeed(speed);
+    return built;
   }
 
   public void setStateListener(@Nullable StateListener stateListener) {
@@ -103,7 +137,7 @@ public final class VideoController implements Player.Listener {
     try {
       current.onVideoState(state());
     } catch (Exception error) {
-      android.util.Log.w("YutarioVideo", "video state emit failed", error);
+      android.util.Log.w(TAG, "video state emit failed", error);
     }
   }
 
@@ -119,6 +153,9 @@ public final class VideoController implements Player.Listener {
       out.put("bufferedMs", Math.max(0, player.getBufferedPosition()));
       out.put("ended", player.getPlaybackState() == Player.STATE_ENDED);
       out.put("error", lastError == null ? JSONObject.NULL : lastError);
+      out.put("errorDetail", lastErrorDetail == null ? JSONObject.NULL : lastErrorDetail);
+      out.put("mimeType", detectedMime == null ? JSONObject.NULL : detectedMime);
+      out.put("softwareDecoding", softwareFallback);
       out.put("visible", visible);
     } catch (JSONException ignored) {
       /* primitives only */
@@ -129,7 +166,9 @@ public final class VideoController implements Player.Listener {
   private void ensureViews() {
     if (container != null) return;
     ViewGroup parent = (ViewGroup) webView.getParent();
-    if (parent == null) throw new IllegalStateException("WebView is not attached");
+    if (parent == null) {
+      throw new IllegalStateException("The video surface has no parent view to attach to");
+    }
     host = parent;
 
     container = new android.widget.FrameLayout(activity);
@@ -158,57 +197,173 @@ public final class VideoController implements Player.Listener {
 
   private void setWebViewTransparent(boolean transparent) {
     try {
-      if (transparent) {
-        webView.setBackgroundColor(Color.TRANSPARENT);
-      } else {
-        webView.setBackgroundColor(Color.parseColor("#0a0b12"));
-      }
+      // The page paints its own background, so the WebView itself must stay transparent while the
+      // native video surface is behind it. It used to be repainted with a solid colour on exit,
+      // which left the surface hidden after returning to a video.
+      webView.setBackgroundColor(Color.TRANSPARENT);
     } catch (Exception ignored) {
       /* WebView may be mid-teardown. */
     }
   }
 
   public JSONObject show(JSONObject options) {
-    ensureViews();
-    String uri = options.optString("uri", "");
-    if (uri.isEmpty()) throw new IllegalArgumentException("A media uri is required");
-    currentUri = uri;
+    String requested = options.optString("uri", "");
     currentTitle = options.optString("title", "");
     subtitleUri = options.optString("subtitleUri", null);
     subtitleName = options.optString("subtitleName", null);
     speed = options.optDouble("speed", 1.0) > 0 ? (float) options.optDouble("speed", 1.0) : 1f;
-    long startPosition = Math.max(0, options.optLong("startPositionMs", 0));
+
     lastError = null;
+    lastErrorDetail = null;
+    detectedMime = null;
+    currentUri = requested;
+    playableUri = null;
+
+    try {
+      ensureViews();
+    } catch (Exception error) {
+      fail("SURFACE_UNAVAILABLE", "The video view could not be created: " + describe(error));
+      return state();
+    }
+
+    long startPosition = Math.max(0, options.optLong("startPositionMs", 0));
+    boolean autoPlay = options.optBoolean("autoPlay", true);
     visible = true;
-    player.setMediaItem(buildMediaItem());
-    player.prepare();
-    player.setPlaybackSpeed(speed);
-    if (startPosition > 0) player.seekTo(startPosition);
-    player.setPlayWhenReady(options.optBoolean("autoPlay", true));
+
+    try {
+      open(startPosition, autoPlay);
+    } catch (Exception error) {
+      Diagnostics.log(activity, "video", "Could not open " + MediaUris.describe(requested), error);
+      fail("MEDIA_OPEN_FAILED", describe(error));
+    }
+
     applyKeepScreenOn(keepScreenOn);
     startTicker();
     emit();
     return state();
   }
 
-  private MediaItem buildMediaItem() {
-    if (currentUri == null) throw new IllegalStateException("No video selected");
+  private void open(long startPosition, boolean autoPlay) {
+    Uri uri = resolvePlayableUri(currentUri);
+    playableUri = uri.toString();
+    detectedMime = detectMimeType(uri);
+    player.setMediaItem(buildMediaItem(uri));
+    player.prepare();
+    player.setPlaybackSpeed(speed);
+    if (startPosition > 0) player.seekTo(startPosition);
+    player.setPlayWhenReady(autoPlay);
+    Diagnostics.log(
+      activity,
+      "video",
+      "Opening " + MediaUris.describe(playableUri) + " mime=" + detectedMime + " software=" + softwareFallback
+    );
+  }
+
+  /**
+   * Resolves the stored location into something ExoPlayer can read, and proves the app is actually
+   * allowed to read it. content:// URIs are never converted into filesystem paths.
+   */
+  private Uri resolvePlayableUri(@Nullable String raw) {
+    String normalized = MediaUris.normalize(raw);
+    if (normalized.isEmpty()) {
+      throw new IllegalArgumentException("No video file was selected");
+    }
+    Uri uri;
+    if (MediaUris.isLocalFile(normalized) && !normalized.startsWith("file://")) {
+      uri = Uri.fromFile(new File(normalized));
+    } else if (MediaUris.hasScheme(normalized)) {
+      uri = Uri.parse(normalized);
+    } else {
+      uri = Uri.fromFile(new File(normalized));
+    }
+
+    String scheme = uri.getScheme() == null ? "" : uri.getScheme();
+    if (ContentResolver.SCHEME_CONTENT.equals(scheme) || "android.resource".equals(scheme)) {
+      // Opening a descriptor is the only reliable permission check for a content URI.
+      try (AssetFileDescriptor descriptor =
+        activity.getContentResolver().openAssetFileDescriptor(uri, "r")) {
+        if (descriptor == null) {
+          throw new IllegalStateException("The system media provider returned no data for this file");
+        }
+      } catch (SecurityException error) {
+        throw new IllegalStateException(
+          "Access to this file was denied. Import it again from storage so the app keeps permission.",
+          error
+        );
+      } catch (java.io.FileNotFoundException error) {
+        throw new IllegalStateException(
+          "This file is no longer on the device. It may have been moved or deleted.",
+          error
+        );
+      } catch (Exception error) {
+        throw new IllegalStateException("Could not read the file: " + describe(error), error);
+      }
+      return uri;
+    }
+
+    if ("file".equals(scheme)) {
+      String path = uri.getPath();
+      if (path == null) throw new IllegalStateException("The file path is empty");
+      if (path.startsWith("/_capacitor_file_")) {
+        path = path.substring("/_capacitor_file_".length());
+        uri = Uri.fromFile(new File(path));
+      }
+      File file = new File(path);
+      if (!file.exists()) {
+        throw new IllegalStateException("The file was not found at " + path);
+      }
+      if (!file.canRead()) {
+        throw new IllegalStateException("The app is not allowed to read " + path);
+      }
+      // Files outside shared storage are not readable unless the grant survived; report early.
+      String external = Environment.getExternalStorageDirectory().getAbsolutePath();
+      if (!path.startsWith(external) && !path.startsWith(activity.getFilesDir().getAbsolutePath())) {
+        if (!file.canRead()) {
+          throw new IllegalStateException("No read access to " + path);
+        }
+      }
+      return uri;
+    }
+
+    if (uri.getScheme() == null) {
+      throw new IllegalStateException("Unsupported media location: " + MediaUris.describe(raw));
+    }
+    return uri;
+  }
+
+  @Nullable
+  private String detectMimeType(Uri uri) {
+    try {
+      String fromProvider = activity.getContentResolver().getType(uri);
+      if (fromProvider != null && !fromProvider.isEmpty()) return fromProvider;
+    } catch (Exception ignored) {
+      /* Providers are allowed to fail; the extension is a fine fallback. */
+    }
+    String fromName = MediaUris.mimeFromName(uri.getLastPathSegment());
+    return fromName.isEmpty() ? null : fromName;
+  }
+
+  private MediaItem buildMediaItem(Uri uri) {
     MediaMetadata metadata = new MediaMetadata.Builder()
       .setTitle(currentTitle == null ? "" : currentTitle)
       .setIsPlayable(true)
       .setIsBrowsable(false)
       .build();
+    // No MIME hint is passed on purpose: ExoPlayer's container sniffing is more reliable than the
+    // MIME type MediaStore guesses from a file extension.
     MediaItem.Builder builder = new MediaItem.Builder()
-      .setUri(currentUri)
+      .setUri(uri)
       .setMediaMetadata(metadata);
     if (subtitleUri != null && !subtitleUri.isEmpty()) {
-      MediaItem.SubtitleConfiguration subtitle = new MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUri))
-        .setMimeType(subtitleMimeType(subtitleName))
-        .setLanguage("und")
-        .setLabel(subtitleName == null ? "External subtitles" : subtitleName)
-        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-        .build();
-      builder.setSubtitleConfigurations(Collections.singletonList(subtitle));
+      String subtitle = MediaUris.normalize(subtitleUri);
+      MediaItem.SubtitleConfiguration configuration =
+        new MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle))
+          .setMimeType(subtitleMimeType(subtitleName))
+          .setLanguage("und")
+          .setLabel(subtitleName == null ? "External subtitles" : subtitleName)
+          .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+          .build();
+      builder.setSubtitleConfigurations(Collections.singletonList(configuration));
     }
     return builder.build();
   }
@@ -264,7 +419,7 @@ public final class VideoController implements Player.Listener {
       if (playerView != null) playerView.setUseController(nativeControls);
       int index = above ? host.getChildCount() : 0;
       host.addView(container, index, container.getLayoutParams());
-      setWebViewTransparent(!above);
+      setWebViewTransparent(true);
     }
     emit();
     return state();
@@ -279,7 +434,9 @@ public final class VideoController implements Player.Listener {
 
   public JSONObject setPaused(boolean paused) {
     if (!paused) {
-      if (player.getPlaybackState() == Player.STATE_IDLE) player.prepare();
+      if (player.getPlaybackState() == Player.STATE_IDLE && player.getMediaItemCount() > 0) {
+        player.prepare();
+      }
       player.play();
       startTicker();
     } else {
@@ -300,11 +457,17 @@ public final class VideoController implements Player.Listener {
     boolean playWhenReady = player.getPlayWhenReady();
     subtitleUri = uri;
     subtitleName = name;
-    if (currentUri != null) {
-      player.setMediaItem(buildMediaItem());
-      player.prepare();
-      player.seekTo(position);
-      player.setPlayWhenReady(playWhenReady);
+    if (playableUri != null) {
+      try {
+        Uri media = Uri.parse(playableUri);
+        player.setMediaItem(buildMediaItem(media));
+        player.prepare();
+        player.seekTo(position);
+        player.setPlayWhenReady(playWhenReady);
+      } catch (Exception error) {
+        Diagnostics.log(activity, "video", "subtitle reload failed", error);
+        fail("MEDIA_OPEN_FAILED", describe(error));
+      }
     }
     emit();
     return state();
@@ -420,9 +583,15 @@ public final class VideoController implements Player.Listener {
 
   public void hide() {
     visible = false;
-    player.pause();
     handler.removeCallbacks(ticker);
     tickerRunning = false;
+    try {
+      player.pause();
+      player.stop();
+      player.clearMediaItems();
+    } catch (Exception error) {
+      Diagnostics.log(activity, "video", "could not stop the video player", error);
+    }
     if (container != null && host != null) {
       host.removeView(container);
     }
@@ -432,7 +601,9 @@ public final class VideoController implements Player.Listener {
     container = null;
     playerView = null;
     host = null;
-    setWebViewTransparent(false);
+    playableUri = null;
+    lastError = null;
+    lastErrorDetail = null;
     applyKeepScreenOn(false);
     unlockOrientation();
     emit();
@@ -440,8 +611,55 @@ public final class VideoController implements Player.Listener {
 
   public void release() {
     hide();
-    player.removeListener(this);
-    player.release();
+    try {
+      player.removeListener(this);
+      player.release();
+    } catch (Exception error) {
+      Diagnostics.log(activity, "video", "player release failed", error);
+    }
+  }
+
+  // ---------------------------------------------------------------- error handling
+
+  private void fail(String code, String detail) {
+    lastError = code;
+    lastErrorDetail = detail;
+    Diagnostics.log(activity, "video", "Failure " + code + " for " + MediaUris.describe(playableUri == null ? currentUri : playableUri) + ": " + detail);
+    emit();
+  }
+
+  private static String describe(Throwable error) {
+    String message = error.getMessage();
+    return error.getClass().getSimpleName() + (message == null || message.isEmpty() ? "" : ": " + message);
+  }
+
+  private static boolean isDecoderFailure(int errorCode) {
+    switch (errorCode) {
+      case PlaybackException.ERROR_CODE_DECODER_INIT_FAILED:
+      case PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED:
+      case PlaybackException.ERROR_CODE_DECODING_FAILED:
+      case PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES:
+      case PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private static String causeChain(Throwable error) {
+    StringBuilder out = new StringBuilder();
+    Throwable current = error;
+    int depth = 0;
+    while (current != null && depth < 4) {
+      if (depth > 0) out.append(" <- ");
+      out.append(current.getClass().getSimpleName());
+      if (current.getMessage() != null) out.append(": ").append(current.getMessage());
+      Throwable next = current.getCause();
+      if (next == current) break;
+      current = next;
+      depth += 1;
+    }
+    return out.toString();
   }
 
   @Override
@@ -453,6 +671,7 @@ public final class VideoController implements Player.Listener {
   public void onPlaybackStateChanged(int playbackState) {
     if (playbackState == Player.STATE_READY) {
       lastError = null;
+      lastErrorDetail = null;
       startTicker();
     }
     emit();
@@ -460,13 +679,94 @@ public final class VideoController implements Player.Listener {
 
   @Override
   public void onPlayerError(PlaybackException error) {
-    lastError = error.getErrorCodeName() + (error.getMessage() == null ? "" : ": " + error.getMessage());
-    android.util.Log.w("YutarioVideo", "video error " + lastError, error);
-    emit();
+    int code = error.errorCode;
+    String name = error.getErrorCodeName();
+    String detail = causeChain(error);
+    Diagnostics.log(
+      activity,
+      "video",
+      "PlaybackException code=" + code + " (" + name + ") uri=" + MediaUris.describe(playableUri)
+        + " mime=" + detectedMime + " software=" + softwareFallback + " detail=" + detail,
+      error
+    );
+    if (isDecoderFailure(code) && !fallbackAttempted) {
+      retryWithSoftwareDecoders(name, detail);
+      return;
+    }
+    fail(name, buildUserDetail(code, name, detail));
+  }
+
+  private String buildUserDetail(int code, String name, String detail) {
+    String suffix = code == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+      || code == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED
+        ? "no decoder for this format on this device"
+        : "decoder could not start this stream";
+    return name + " (" + code + ") — " + suffix + ". " + detail;
+  }
+
+  /**
+   * Hardware decoders reject plenty of valid files. Rebuilding the player with software codecs
+   * first fixes the common cases and is always preferable to failing outright.
+   */
+  private void retryWithSoftwareDecoders(String name, String detail) {
+    fallbackAttempted = true;
+    long position = Math.max(0, player.getCurrentPosition());
+    boolean wasPlaying = player.getPlayWhenReady();
+    Diagnostics.log(activity, "video", "Retrying with software decoders after " + name + ": " + detail);
+    softwareFallback = true;
+    handler.post(() -> {
+      try {
+        player.removeListener(this);
+        player.release();
+      } catch (Exception releaseError) {
+        Diagnostics.log(activity, "video", "old player release failed", releaseError);
+      }
+      player = buildPlayer(true);
+      player.addListener(this);
+      if (playerView != null) playerView.setPlayer(player);
+      try {
+        if (playableUri == null || MediaUris.normalize(currentUri).isEmpty()) {
+          open(position, wasPlaying);
+        } else {
+          player.setMediaItem(buildMediaItem(Uri.parse(playableUri)));
+          player.prepare();
+          player.seekTo(position);
+          player.setPlayWhenReady(wasPlaying);
+        }
+        emit();
+      } catch (Exception error) {
+        Diagnostics.log(activity, "video", "software fallback failed", error);
+        fail("SOFTWARE_FALLBACK_FAILED", describe(error));
+      }
+    });
   }
 
   @Override
   public void onTracksChanged(Tracks tracks) {
     emit();
+  }
+
+  /** Orders decoder lists so software codecs are tried before hardware ones. */
+  private static final class SoftwareFirstSelector implements MediaCodecSelector {
+    @Override
+    public List<MediaCodecInfo> getDecoderInfos(
+      String mimeType,
+      boolean requiresSecureDecoder,
+      boolean requiresTunnelingDecoder
+    ) throws MediaCodecUtil.DecoderQueryException {
+      List<MediaCodecInfo> all = MediaCodecUtil.getDecoderInfos(
+        mimeType,
+        requiresSecureDecoder,
+        requiresTunnelingDecoder
+      );
+      List<MediaCodecInfo> software = new ArrayList<>(all.size());
+      List<MediaCodecInfo> hardware = new ArrayList<>(all.size());
+      for (MediaCodecInfo info : all) {
+        if (info.softwareOnly) software.add(info);
+        else hardware.add(info);
+      }
+      software.addAll(hardware);
+      return software;
+    }
   }
 }

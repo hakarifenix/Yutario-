@@ -181,6 +181,7 @@ export const fr: Record<TranslationKey, string> = {
   'video.orientation': 'Rotation',
   'video.nativeFallback': 'Commandes vidéo natives',
   'video.subtitleOffsetUnsupported': 'Le décalage des sous-titres n’est pas pris en charge par le moteur de lecture.',
+  'video.retry': 'Réessayer',
 
   'settings.title': 'Réglages',
   'settings.appearance': 'Apparence',
@@ -214,6 +215,13 @@ export const fr: Record<TranslationKey, string> = {
   'settings.notGranted': 'Non accordé',
   'settings.privacy': 'Confidentialité',
   'settings.privacyBody': 'Yutario n’envoie jamais vos fichiers. Aucun compte, aucun serveur cloud.',
+  'settings.diagnostics': 'Diagnostic de lecture',
+  'settings.diagnosticsHint': 'Erreurs du lecteur natif et plantages enregistrés sur cet appareil.',
+  'settings.diagnosticsEmpty': 'Aucune erreur enregistrée pour le moment.',
+  'settings.diagnosticsCopy': 'Copier le journal',
+  'settings.diagnosticsCopyFailed': 'La copie est bloquée sur cet appareil.',
+  'settings.diagnosticsCopied': 'Journal copié',
+  'settings.diagnosticsClear': 'Effacer le journal',
 
   'equalizer.title': 'Égaliseur et effets audio',
   'equalizer.unsupported': 'Les effets audio ne sont pas disponibles sur cet appareil ou nécessitent un égaliseur matériel.',

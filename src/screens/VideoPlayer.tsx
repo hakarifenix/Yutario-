@@ -77,24 +77,31 @@ export function VideoPlayerScreen() {
     }).catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (!item || !isNativePlatform) return;
-    if (startedRef.current) return;
-    startedRef.current = true;
-    document.documentElement.dataset.videoActive = 'true';
-
-    const resume = useSettings.getState().resumePlayback ? useCollections.getState().getProgress(item.id) : 0;
-    const startPositionMs = resume > 5000 && (item.durationMs === 0 || resume < item.durationMs - 5000) ? resume : 0;
-
-    (async () => {
+  const startVideo = useCallback(
+    async (fromPositionMs?: number) => {
+      if (!item || !isNativePlatform) return;
+      const saved =
+        fromPositionMs ??
+        (useSettings.getState().resumePlayback ? useCollections.getState().getProgress(item.id) : 0);
+      const startPositionMs =
+        saved > 5000 && (item.durationMs === 0 || saved < item.durationMs - 5000) ? saved : 0;
+      setState((previous) => ({
+        ...previous,
+        error: null,
+        errorDetail: null,
+        isBuffering: true,
+        ended: false,
+        positionMs: startPositionMs,
+      }));
       try {
         await YutarioNative.setKeepScreenOn({ on: true });
-        await YutarioNative.showVideo({
+        const nativeState = await YutarioNative.showVideo({
           uri: item.uri,
           title: item.title,
           startPositionMs,
           speed: 1,
         });
+        if (nativeState) setState(nativeState);
         await YutarioNative.setVideoResizeMode({ mode: 'fit' });
         if (nativeVideoMode) {
           await YutarioNative.setVideoOverlay({ aboveWebView: true, nativeControls: true });
@@ -107,12 +114,31 @@ export function VideoPlayerScreen() {
         console.error('video start failed', error);
         setState((previous) => ({
           ...previous,
-          error: error instanceof Error ? error.message : 'video failed',
+          error: 'START_FAILED',
+          errorDetail: error instanceof Error ? error.message : String(error),
         }));
       }
-    })();
+    },
+    [item, nativeVideoMode, syncBounds],
+  );
 
+  // Keeps the start function out of the effect dependencies so a library refresh cannot restart
+  // (and therefore hide) a video that is already playing.
+  const startRef = useRef(startVideo);
+  startRef.current = startVideo;
+
+  useEffect(() => {
+    if (!item || !isNativePlatform) return;
+    document.documentElement.dataset.videoActive = 'true';
+
+    // Subscribed before playback starts: the engine can report an error before showVideo resolves,
+    // and those early events used to be dropped.
     const listener = YutarioNative.addListener('videoState', (engineState) => setState(engineState));
+    if (!startedRef.current) {
+      startedRef.current = true;
+      void startRef.current();
+    }
+
     const onResize = () => syncBounds();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
@@ -132,6 +158,11 @@ export function VideoPlayerScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id, nativeVideoMode, syncBounds]);
+
+  const retryPlayback = () => {
+    registerInteraction();
+    void startRef.current(stateRef.current.positionMs);
+  };
 
   useEffect(() => {
     if (!item || !isNativePlatform) return;
@@ -416,13 +447,30 @@ export function VideoPlayerScreen() {
           <p className="text-[12.5px] leading-relaxed text-white/85">
             {state.error ? t('video.error') : t('player.error')}
           </p>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="tap mt-3 rounded-lg bg-white/15 px-3 py-1.5 text-[11px] font-semibold text-white"
-          >
-            {t('a11y.back')}
-          </button>
+          {state.error && state.errorDetail ? (
+            <p className="mt-2 max-h-24 overflow-y-auto break-words text-[10px] leading-relaxed text-white/55" dir="ltr">
+              {state.errorDetail}
+              {state.mimeType ? ` · ${state.mimeType}` : ''}
+            </p>
+          ) : null}
+          <div className="mt-3 flex items-center justify-center gap-2">
+            {state.error ? (
+              <button
+                type="button"
+                onClick={retryPlayback}
+                className="tap rounded-lg bg-accent px-3 py-1.5 text-[11px] font-semibold text-white"
+              >
+                {t('video.retry')}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="tap rounded-lg bg-white/15 px-3 py-1.5 text-[11px] font-semibold text-white"
+            >
+              {t('a11y.back')}
+            </button>
+          </div>
         </div>
       ) : null}
 

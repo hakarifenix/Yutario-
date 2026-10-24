@@ -46,17 +46,14 @@ class NativePlaybackEngine implements PlaybackEngine {
     options?: { positionMs?: number; autoPlay?: boolean },
   ): Promise<void> {
     await attachListeners();
-    const state = await safe(
-      () =>
-        YutarioNative.play({
-          items: items.map(toQueuePayload),
-          startIndex,
-          startPositionMs: options?.positionMs ?? 0,
-          autoPlay: options?.autoPlay !== false,
-        }),
-      null as unknown as EngineState,
-      'play',
-    );
+    // A failed start is surfaced to the UI instead of being swallowed: the previous version
+    // returned a null state and left the player silently stuck.
+    const state = await YutarioNative.play({
+      items: items.map(toQueuePayload),
+      startIndex,
+      startPositionMs: options?.positionMs ?? 0,
+      autoPlay: options?.autoPlay !== false,
+    });
     fanOut(state);
   }
 

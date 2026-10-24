@@ -34,8 +34,18 @@ public final class AudioEffectsManager {
   @Nullable
   private String reason;
 
+  /** True once the user has switched the equalizer on. Effects are only built after that. */
+  public synchronized boolean isEnabled() {
+    return enabled;
+  }
+
+  /**
+   * Binds the effects to an audio session. Called when playback starts with the equalizer enabled and
+   * whenever the equalizer panel is opened, never eagerly on every session change.
+   */
   public synchronized void attach(int newSessionId) {
-    if (newSessionId <= 0 || newSessionId == sessionId) return;
+    if (newSessionId <= 0) return;
+    if (newSessionId == sessionId && equalizer != null) return;
     release();
     sessionId = newSessionId;
     try {

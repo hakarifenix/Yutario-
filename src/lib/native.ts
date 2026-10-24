@@ -112,6 +112,8 @@ export interface YutarioNativePlugin {
   setOrientation(options: { orientation: 'landscape' | 'portrait' | 'unlocked' }): Promise<void>;
   getCapabilities(): Promise<Record<string, boolean>>;
   openAppSettings(): Promise<void>;
+  getDiagnostics(): Promise<{ log: string; lastError: string | null }>;
+  clearDiagnostics(): Promise<void>;
 
   addListener(
     eventName: 'playerState',

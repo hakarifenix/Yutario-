@@ -8,6 +8,8 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    // Installed first so a crash during plugin or bridge setup is still recorded.
+    Diagnostics.installCrashHandler(this);
     registerPlugin(YutarioPlugin.class);
     super.onCreate(savedInstanceState);
     handleExternalIntent(getIntent());
@@ -24,6 +26,10 @@ public class MainActivity extends BridgeActivity {
     if (intent == null) return;
     String action = intent.getAction();
     if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_VIEW.equals(action)) return;
-    YutarioPlugin.deliverIntent(this, intent);
+    try {
+      YutarioPlugin.deliverIntent(this, intent);
+    } catch (Exception error) {
+      Diagnostics.log(this, "intent", "could not read the shared file", error);
+    }
   }
 }

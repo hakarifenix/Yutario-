@@ -180,6 +180,7 @@ export const ar: Record<TranslationKey, string> = {
   'video.orientation': 'تدوير',
   'video.nativeFallback': 'عناصر تحكم الفيديو الأصلية',
   'video.subtitleOffsetUnsupported': 'تأخير الترجمة غير مدعوم في محرك التشغيل.',
+  'video.retry': 'إعادة المحاولة',
 
   'settings.title': 'الإعدادات',
   'settings.appearance': 'المظهر',
@@ -212,6 +213,13 @@ export const ar: Record<TranslationKey, string> = {
   'settings.notGranted': 'غير ممنوح',
   'settings.privacy': 'الخصوصية',
   'settings.privacyBody': 'لا يرفع يوتاريو ملفاتك أبدًا. لا حساب ولا خادم سحابي.',
+  'settings.diagnostics': 'تشخيص التشغيل',
+  'settings.diagnosticsHint': 'أخطاء المشغل الأصلي والأعطال المسجّلة على هذا الجهاز.',
+  'settings.diagnosticsEmpty': 'لا توجد أخطاء مسجّلة بعد.',
+  'settings.diagnosticsCopy': 'نسخ السجل',
+  'settings.diagnosticsCopyFailed': 'النسخ محظور على هذا الجهاز.',
+  'settings.diagnosticsCopied': 'تم نسخ السجل',
+  'settings.diagnosticsClear': 'مسح السجل',
 
   'equalizer.title': 'معادل الصوت والتأثيرات',
   'equalizer.unsupported': 'التأثيرات الصوتية غير متاحة على هذا الجهاز أو تتطلب معادلًا ماديًا.',

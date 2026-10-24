@@ -14,6 +14,8 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +27,10 @@ import org.json.JSONObject;
  * Single authoritative audio playback engine. The queue lives in ExoPlayer so that
  * notification, lock-screen and headset actions stay in sync with the UI.
  */
+@UnstableApi
 public final class PlaybackController implements Player.Listener {
+
+  private static final String TAG = "YutarioPlayback";
 
   public interface StateListener {
     void onState(JSONObject state);
@@ -34,9 +39,12 @@ public final class PlaybackController implements Player.Listener {
   private static PlaybackController instance;
 
   private final Context context;
-  private final ExoPlayer player;
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final AudioEffectsManager effects;
+
+  private final ExoPlayer player;
+  @Nullable
+  private String errorDetail;
 
   @Nullable
   private StateListener stateListener;
@@ -67,17 +75,25 @@ public final class PlaybackController implements Player.Listener {
 
   private PlaybackController(Context ctx) {
     this.context = ctx.getApplicationContext();
+    this.effects = new AudioEffectsManager();
+    this.player = buildPlayer();
+    this.player.addListener(this);
+  }
+
+  private ExoPlayer buildPlayer() {
     AudioAttributes attributes = new AudioAttributes.Builder()
       .setUsage(C.USAGE_MEDIA)
       .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
       .build();
-    this.player = new ExoPlayer.Builder(this.context)
+    // Decoder fallback lets ExoPlayer move to the next MediaCodec (usually the software one) when
+    // a hardware decoder refuses a file, instead of failing the whole track.
+    DefaultRenderersFactory renderers = new DefaultRenderersFactory(context)
+      .setEnableDecoderFallback(true);
+    return new ExoPlayer.Builder(context, renderers)
       .setAudioAttributes(attributes, true)
       .setHandleAudioBecomingNoisy(true)
       .setWakeMode(C.WAKE_MODE_LOCAL)
       .build();
-    this.player.addListener(this);
-    this.effects = new AudioEffectsManager();
   }
 
   public static synchronized PlaybackController getInstance(Context context) {
@@ -100,6 +116,12 @@ public final class PlaybackController implements Player.Listener {
     if (listener != null) {
       emit();
     }
+  }
+
+  /** The plugin that is currently listening, so a destroyed activity cannot silence a new one. */
+  @Nullable
+  public StateListener getStateListener() {
+    return stateListener;
   }
 
   private void emit() {
@@ -138,6 +160,8 @@ public final class PlaybackController implements Player.Listener {
       out.put("speed", player.getPlaybackParameters().speed);
       out.put("ended", player.getPlaybackState() == Player.STATE_ENDED);
       out.put("error", lastError == null ? JSONObject.NULL : lastError);
+      out.put("errorDetail", errorDetail == null ? JSONObject.NULL : errorDetail);
+      out.put("decoderFallback", true);
       out.put(
         "sleepTimerEndsAt",
         sleepEndsAt > 0 ? sleepEndsAt : JSONObject.NULL
@@ -181,7 +205,10 @@ public final class PlaybackController implements Player.Listener {
       .setIsBrowsable(false);
     if (!artist.isEmpty()) metadata.setArtist(artist);
     if (!album.isEmpty()) metadata.setAlbumTitle(album);
-    if (!uri.isEmpty()) metadata.setArtworkUri(Uri.parse(uri));
+    // The audio file itself is never used as the artwork URI: the notification path would open the
+    // same file a second time through MediaMetadataRetriever while it is being decoded.
+    String artwork = object.optString("artworkUri", "");
+    if (!artwork.isEmpty()) metadata.setArtworkUri(Uri.parse(artwork));
     return new MediaItem.Builder()
       .setMediaId(object.optString("id", uri))
       .setUri(uri)
@@ -203,19 +230,27 @@ public final class PlaybackController implements Player.Listener {
   }
 
   public JSONObject playQueue(JSONArray items, int startIndex, long startPositionMs, boolean autoPlay) {
-    List<MediaItem> mediaItems = parseItems(items);
     lastError = null;
-    if (mediaItems.isEmpty()) {
-      player.clearMediaItems();
-      player.setPlayWhenReady(false);
-      bumpQueue();
-      emit();
-      return snapshot();
+    errorDetail = null;
+    try {
+      List<MediaItem> mediaItems = parseItems(items);
+      if (mediaItems.isEmpty()) {
+        player.clearMediaItems();
+        player.setPlayWhenReady(false);
+        bumpQueue();
+        emit();
+        return snapshot();
+      }
+      int index = Math.max(0, Math.min(startIndex, mediaItems.size() - 1));
+      player.setMediaItems(mediaItems, index, Math.max(0, startPositionMs));
+      player.prepare();
+      player.setPlayWhenReady(autoPlay);
+    } catch (Exception error) {
+      // Never let a bad item take the process down: report it and keep the queue usable.
+      lastError = "QUEUE_FAILED";
+      errorDetail = describe(error);
+      Diagnostics.log(context, "audio", "could not start the queue", error);
     }
-    int index = Math.max(0, Math.min(startIndex, mediaItems.size() - 1));
-    player.setMediaItems(mediaItems, index, Math.max(0, startPositionMs));
-    player.prepare();
-    player.setPlayWhenReady(autoPlay);
     bumpQueue();
     emit();
     return snapshot();
@@ -443,7 +478,12 @@ public final class PlaybackController implements Player.Listener {
   @Override
   public void onAudioSessionIdChanged(int newAudioSessionId) {
     audioSessionId = newAudioSessionId;
-    effects.attach(newAudioSessionId);
+    // Audio effects are created on demand only. Building an Equalizer/BassBoost/Virtualizer on
+    // every session change is the classic cause of device-specific audiofs crashes during the
+    // first second of playback, and it is pointless while the panel is untouched.
+    if (effects.isEnabled()) {
+      effects.attach(newAudioSessionId);
+    }
     emit();
   }
 
@@ -453,8 +493,30 @@ public final class PlaybackController implements Player.Listener {
 
   @Override
   public void onPlayerError(PlaybackException error) {
-    lastError = error.getErrorCodeName() + ": " + (error.getMessage() == null ? "" : error.getMessage());
-    android.util.Log.w("YutarioPlayback", "player error " + lastError, error);
+    lastError = error.getErrorCodeName();
+    errorDetail = error.errorCode + " — " + causeChain(error);
+    Diagnostics.log(context, "audio", "PlaybackException " + lastError + " " + errorDetail, error);
     emit();
+  }
+
+  private static String describe(Throwable error) {
+    String message = error.getMessage();
+    return error.getClass().getSimpleName() + (message == null || message.isEmpty() ? "" : ": " + message);
+  }
+
+  private static String causeChain(Throwable error) {
+    StringBuilder out = new StringBuilder();
+    Throwable current = error;
+    int depth = 0;
+    while (current != null && depth < 4) {
+      if (depth > 0) out.append(" <- ");
+      out.append(current.getClass().getSimpleName());
+      if (current.getMessage() != null) out.append(": ").append(current.getMessage());
+      Throwable next = current.getCause();
+      if (next == current) break;
+      current = next;
+      depth += 1;
+    }
+    return out.toString();
   }
 }

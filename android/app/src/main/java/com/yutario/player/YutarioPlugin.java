@@ -64,7 +64,9 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
 
   @Override
   protected void handleOnDestroy() {
-    if (playback != null) playback.setStateListener(null);
+    // Only clear the listener if this plugin registered it: a newly created activity may already
+    // have taken over, and silencing it would freeze the player UI.
+    if (playback != null && playback.getStateListener() == this) playback.setStateListener(null);
     if (video != null) {
       video.setStateListener(null);
       video.release();
@@ -403,12 +405,17 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
 
   @PluginMethod
   public void play(PluginCall call) {
-    ensureServiceStarted();
-    JSArray items = call.getArray("items", new JSArray());
-    int startIndex = call.getInt("startIndex", 0);
-    long startPosition = call.getLong("startPositionMs", 0L);
-    boolean autoPlay = !Boolean.FALSE.equals(call.getBoolean("autoPlay", Boolean.TRUE));
-    resolve(call, playback.playQueue(items, startIndex, startPosition, autoPlay));
+    try {
+      ensureServiceStarted();
+      JSArray items = call.getArray("items", new JSArray());
+      int startIndex = call.getInt("startIndex", 0);
+      long startPosition = call.getLong("startPositionMs", 0L);
+      boolean autoPlay = !Boolean.FALSE.equals(call.getBoolean("autoPlay", Boolean.TRUE));
+      resolve(call, playback.playQueue(items, startIndex, startPosition, autoPlay));
+    } catch (Exception error) {
+      Diagnostics.log(getContext(), "audio", "play failed", error);
+      call.reject("Playback could not start: " + error, error);
+    }
   }
 
   @PluginMethod
@@ -490,6 +497,24 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
     resolve(call, playback.snapshot());
   }
 
+  // ---------------------------------------------------------------- diagnostics
+
+  @PluginMethod
+  public void getDiagnostics(PluginCall call) {
+    JSObject out = new JSObject();
+    out.put("log", Diagnostics.read(getContext()));
+    JSONObject snapshot = playback == null ? null : playback.snapshot();
+    String lastError = snapshot == null || snapshot.isNull("error") ? null : snapshot.optString("error", null);
+    out.put("lastError", lastError);
+    call.resolve(out);
+  }
+
+  @PluginMethod
+  public void clearDiagnostics(PluginCall call) {
+    Diagnostics.clear(getContext());
+    call.resolve();
+  }
+
   @PluginMethod
   public void setSleepTimer(PluginCall call) {
     Integer minutes = call.getInt("minutes", null);
@@ -502,6 +527,12 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
 
   @PluginMethod
   public void getEqualizer(PluginCall call) {
+    // Effects are bound when the panel is opened, not at the start of every track.
+    try {
+      playback.getEffects().attach(playback.getAudioSessionId());
+    } catch (Exception error) {
+      Diagnostics.log(getContext(), "equalizer", "could not bind audio effects", error);
+    }
     resolve(call, playback.getEffects().state());
   }
 
@@ -512,7 +543,13 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
     JSONArray bands = call.getArray("bandLevels", null);
     Integer bass = call.getInt("bassBoost", null);
     Integer virtualizer = call.getInt("virtualizer", null);
-    resolve(call, playback.getEffects().apply(enabled, preset, bands, bass, virtualizer));
+    try {
+      playback.getEffects().attach(playback.getAudioSessionId());
+      resolve(call, playback.getEffects().apply(enabled, preset, bands, bass, virtualizer));
+    } catch (Exception error) {
+      Diagnostics.log(getContext(), "equalizer", "could not apply audio effects", error);
+      resolve(call, playback.getEffects().state());
+    }
   }
 
   // ---------------------------------------------------------------- video
@@ -708,12 +745,20 @@ public class YutarioPlugin extends Plugin implements PlaybackController.StateLis
   @Override
   public void onState(JSONObject state) {
     if (getBridge() == null) return;
-    notifyListeners("playerState", toJsObject(state));
+    try {
+      notifyListeners("playerState", toJsObject(state));
+    } catch (Exception error) {
+      Diagnostics.log(getContext(), "audio", "could not deliver player state", error);
+    }
   }
 
   @Override
   public void onVideoState(JSONObject state) {
     if (getBridge() == null) return;
-    notifyListeners("videoState", toJsObject(state));
+    try {
+      notifyListeners("videoState", toJsObject(state));
+    } catch (Exception error) {
+      Diagnostics.log(getContext(), "video", "could not deliver video state", error);
+    }
   }
 }

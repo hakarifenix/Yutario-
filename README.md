@@ -19,7 +19,8 @@ scratch in phases. Everything below was verified in this environment:
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` (TypeScript, strict) | Pass |
-| `npm run test:run` (Vitest, 10 files) | 69 tests pass |
+| `npm run test:run` (Vitest, 10 files) | 72 tests pass |
+| `./gradlew testDebugUnitTest` | 10 JVM tests pass (media URI handling) |
 | `npm run build` (Vite production bundle) | Pass (≈100 kB gzipped) |
 | Gradle `assembleDebug` (Java 21, compileSdk 35) | Pass |
 | APK produced, signed with the Android debug key, correct manifest and bundled web assets | Verified (`app-debug.apk`, ≈8.7 MB) |
@@ -53,6 +54,8 @@ already passed.
 - Playlists (create, rename, reorder, remove tracks, delete) and favourites — persisted locally.
 - Resume positions per track and a restored last session (paused) on app launch.
 - Playback speed 0.5×–2×, sleep timer (15/30/45/60/90 min, or stop after the current track).
+- Media3 **decoder fallback** is enabled, so a track whose hardware decoder refuses it is retried
+  with the next (usually software) codec instead of failing the whole queue.
 
 ### Background audio and system controls
 - `MediaSessionService` (Media3) with a foreground media notification, play/pause/next/previous,
@@ -67,7 +70,14 @@ already passed.
   seek 10 s, control lock, auto-hiding chrome, keep-screen-on, orientation toggle.
 - Subtitles: embedded track selection (on/off per track), external SRT/VTT/SSA/TTML file loading
   through the document picker, and subtitle size adjustment.
-- Resume position for videos, graceful error overlay for broken or unsupported files.
+- Media URIs are resolved and permission-checked before playback: `content://` URIs are opened
+  through the content resolver and never converted into filesystem paths, `file://` and absolute
+  paths are verified to exist and be readable, and Capacitor's `_capacitor_file_` URLs are
+  unwrapped.
+- Hardware decoder failures are retried once with software codecs at the same position, with
+  Media3's own decoder fallback enabled underneath.
+- Resume position for videos, and an error overlay that prints the real ExoPlayer error code and
+  cause chain (plus a retry button) instead of only a generic message.
 - “Video compatibility mode” fallback (native surface above the WebView with Media3's own
   controller) for devices where WebView transparency is unavailable.
 
@@ -87,6 +97,16 @@ already passed.
   then minimises the app from a root tab instead of terminating playback.
 - English, French and Arabic (full RTL) localisation, accessible labels on icon buttons,
   reduced-motion support and safe-area insets.
+
+### Diagnosing playback problems
+- Every native playback failure and uncaught crash is written to an on-device log
+  (`filesDir/yutario-diagnostics.log`, rotated at 96 kB) with the resolved URI, detected container
+  type and the full ExoPlayer cause chain.
+- **Settings → About → Playback diagnostics** shows that log with copy and clear actions, so a bug
+  report can include the actual error instead of "it crashed".
+- Crashes are still re-thrown to the default handler: the log is evidence, not an attempt to hide
+  a fatal error.
+- `adb logcat -s YutarioDiag YutarioPlayback YutarioVideo YutarioService` shows the same lines live.
 
 ### Deliberate limitations
 - **Picture-in-picture is not implemented** (`getCapabilities().pictureInPicture === false`).
@@ -227,7 +247,11 @@ environment.
 - [ ] Open a video: image appears (WebView transparency), controls, seek, speed, aspect modes.
 - [ ] Rotate the phone; confirm the surface follows and orientation is restored on exit.
 - [ ] Load an SRT subtitle, switch tracks, disable subtitles, resize them.
-- [ ] Play a corrupt file and confirm a clear error rather than a crash.
+- [ ] Play a corrupt or unsupported file and confirm a clear error (with the error code) rather
+      than a crash or a silent stop.
+- [ ] Open a video, leave it, and open it again: playback restarts cleanly at the same position.
+- [ ] Install an update over the previous APK and confirm previously imported (SAF) files still
+      play; if access was revoked the app must say so instead of failing silently.
 - [ ] Enable the equalizer and confirm the sound changes (device-dependent).
 - [ ] Use the Android back gesture from a sheet, the full player, a tab and the home tab.
 - [ ] Switch to Arabic and confirm right-to-left layout.

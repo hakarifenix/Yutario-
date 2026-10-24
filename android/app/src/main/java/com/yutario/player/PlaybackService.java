@@ -10,8 +10,14 @@ import androidx.media3.session.MediaSessionService;
 /**
  * Foreground media service. Media3 owns the notification, lock-screen and headset
  * integration; the player itself is the shared PlaybackController instance.
+ *
+ * <p>Session setup is deliberately defensive: a device that rejects the notification or the
+ * artwork loader must still get audio, so a failure here is logged and playback continues without
+ * lock-screen controls instead of taking the process down.
  */
 public class PlaybackService extends MediaSessionService {
+
+  private static final String TAG = "YutarioService";
 
   @Nullable
   private MediaSession session;
@@ -19,17 +25,25 @@ public class PlaybackService extends MediaSessionService {
   @Override
   public void onCreate() {
     super.onCreate();
-    PlaybackController controller = PlaybackController.getInstance(this);
+    try {
+      DefaultMediaNotificationProvider provider = new DefaultMediaNotificationProvider.Builder(this)
+        .setChannelName(R.string.playback_channel_name)
+        .build();
+      setMediaNotificationProvider(provider);
+    } catch (Exception error) {
+      Diagnostics.log(this, "service", "could not configure the media notification", error);
+    }
 
-    session = new MediaSession.Builder(this, controller.getPlayer())
-      .setBitmapLoader(new ArtworkLoader(this))
-      .setSessionActivity(openAppIntent())
-      .build();
-
-    DefaultMediaNotificationProvider provider = new DefaultMediaNotificationProvider.Builder(this)
-      .setChannelName(R.string.playback_channel_name)
-      .build();
-    setMediaNotificationProvider(provider);
+    try {
+      PlaybackController controller = PlaybackController.getInstance(this);
+      session = new MediaSession.Builder(this, controller.getPlayer())
+        .setBitmapLoader(new ArtworkLoader(this))
+        .setSessionActivity(openAppIntent())
+        .build();
+    } catch (Exception error) {
+      session = null;
+      Diagnostics.log(this, "service", "could not create the media session", error);
+    }
   }
 
   private PendingIntent openAppIntent() {
@@ -55,7 +69,11 @@ public class PlaybackService extends MediaSessionService {
   @Override
   public void onDestroy() {
     if (session != null) {
-      session.release();
+      try {
+        session.release();
+      } catch (Exception error) {
+        Diagnostics.log(this, "service", "could not release the media session", error);
+      }
       session = null;
     }
     super.onDestroy();
