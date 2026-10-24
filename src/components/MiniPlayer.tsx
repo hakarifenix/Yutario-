@@ -24,7 +24,7 @@ export function MiniPlayer() {
 
   return (
     <div
-      className="fixed inset-x-0 z-40 px-2"
+      className="fixed inset-x-0 z-40 animate-fade-up px-2"
       style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 8px)' }}
     >
       <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border border-line/70 bg-surface/95 shadow-lift backdrop-blur-md">

@@ -24,6 +24,12 @@ describe('application shell', () => {
     expect(screen.getByText('Yutario')).toBeInTheDocument();
   });
 
+  it('starts in the light white/green theme', async () => {
+    renderApp();
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'));
+    expect(document.documentElement.lang).toBe('en');
+  });
+
   it('navigates to the music library and settings', async () => {
     renderApp();
     const user = userEvent.setup();

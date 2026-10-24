@@ -54,9 +54,11 @@ function useTheme() {
   useEffect(() => {
     const resolved = resolveTheme(theme);
     document.documentElement.dataset.theme = resolved;
-    document.documentElement.style.backgroundColor = '';
+    const background = resolved === 'light' ? '#f6fbf8' : '#06110d';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
     if (isNativePlatform) {
-      StatusBar.setStyle({ style: resolved === 'light' ? Style.Light : Style.Dark }).catch(() => undefined);
+      void StatusBar.setStyle({ style: resolved === 'light' ? Style.Light : Style.Dark }).catch(() => undefined);
+      void StatusBar.setBackgroundColor({ color: background }).catch(() => undefined);
     }
   }, [theme]);
 }

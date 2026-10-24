@@ -77,7 +77,7 @@ export function HomeScreen() {
   };
 
   return (
-    <div className="page-enter px-4 pt-[calc(env(safe-area-inset-top,0px)+18px)]">
+    <div className="stagger-in px-4 pt-[calc(env(safe-area-inset-top,0px)+18px)]">
       <header className="mb-5 flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">{t('app.name')}</p>

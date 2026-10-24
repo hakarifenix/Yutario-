@@ -32,8 +32,8 @@ export default {
         '3xl': '1.75rem',
       },
       boxShadow: {
-        lift: '0 18px 40px -22px rgba(0,0,0,0.75)',
-        glow: '0 0 0 1px rgb(var(--c-accent) / 0.35), 0 12px 40px -18px rgb(var(--c-accent) / 0.55)',
+        lift: 'var(--shadow-lift)',
+        glow: '0 0 0 1px rgb(var(--c-accent) / 0.28), 0 14px 34px -18px rgb(var(--c-accent) / 0.55)',
       },
       keyframes: {
         'fade-up': {
@@ -48,11 +48,31 @@ export default {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.55' },
         },
+        'fade-in': {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        'scale-in': {
+          from: { opacity: '0', transform: 'scale(0.94)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-6px)' },
+        },
+        'glow-pulse': {
+          '0%, 100%': { opacity: '0.55', transform: 'scale(1)' },
+          '50%': { opacity: '0.85', transform: 'scale(1.04)' },
+        },
       },
       animation: {
-        'fade-up': 'fade-up 220ms ease-out both',
-        'slide-up': 'slide-up 260ms cubic-bezier(0.2, 0.9, 0.25, 1) both',
+        'fade-up': 'fade-up 260ms cubic-bezier(0.2, 0.9, 0.25, 1) both',
+        'fade-in': 'fade-in 180ms ease-out both',
+        'scale-in': 'scale-in 200ms cubic-bezier(0.2, 0.9, 0.25, 1) both',
+        'slide-up': 'slide-up 280ms cubic-bezier(0.2, 0.9, 0.25, 1) both',
         'pulse-soft': 'pulse-soft 1.8s ease-in-out infinite',
+        float: 'float 6s ease-in-out infinite',
+        'glow-pulse': 'glow-pulse 7s ease-in-out infinite',
       },
     },
   },

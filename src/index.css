@@ -3,29 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --c-bg: 10 11 18;
-  --c-surface: 18 20 29;
-  --c-surface-2: 25 28 39;
-  --c-line: 40 44 61;
-  --c-ink: 237 239 249;
-  --c-muted: 150 157 180;
-  --c-accent: 139 92 246;
-  --c-accent-2: 56 189 248;
-  --c-danger: 248 113 113;
-  color-scheme: dark;
+  --c-bg: 246 251 248;
+  --c-surface: 255 255 255;
+  --c-surface-2: 236 247 241;
+  --c-line: 214 234 223;
+  --c-ink: 15 35 27;
+  --c-muted: 84 110 97;
+  --c-accent: 4 120 87;
+  --c-accent-2: 13 148 136;
+  --c-danger: 200 40 40;
+  --shadow-lift: 0 18px 40px -26px rgba(6, 60, 39, 0.38);
+  color-scheme: light;
 }
 
-[data-theme='light'] {
-  --c-bg: 246 247 252;
-  --c-surface: 255 255 255;
-  --c-surface-2: 239 242 249;
-  --c-line: 221 226 239;
-  --c-ink: 22 25 38;
-  --c-muted: 100 108 133;
-  --c-accent: 109 40 217;
-  --c-accent-2: 3 105 161;
-  --c-danger: 220 38 38;
-  color-scheme: light;
+[data-theme='dark'] {
+  --c-bg: 6 17 13;
+  --c-surface: 12 27 20;
+  --c-surface-2: 20 38 29;
+  --c-line: 34 58 45;
+  --c-ink: 232 245 237;
+  --c-muted: 150 175 160;
+  --c-accent: 52 211 153;
+  --c-accent-2: 45 212 191;
+  --c-danger: 248 113 113;
+  --shadow-lift: 0 18px 40px -22px rgba(0, 0, 0, 0.75);
+  color-scheme: dark;
 }
 
 * {
@@ -40,6 +42,7 @@ body,
 
 html {
   background-color: rgb(var(--c-bg));
+  transition: background-color 240ms ease;
 }
 
 body {
@@ -51,6 +54,7 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   user-select: none;
+  transition: background-color 240ms ease, color 240ms ease;
 }
 
 /* The native video surface is drawn behind a transparent page. */
@@ -68,6 +72,19 @@ textarea {
 
 button {
   font-family: inherit;
+}
+
+button:not(:disabled) {
+  transition:
+    transform 140ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    opacity 180ms ease;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 :focus-visible {
@@ -131,7 +148,12 @@ input[type='range'].yr-range::-webkit-slider-thumb {
   margin-top: -5px;
   border-radius: 999px;
   background: #fff;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  border: 2px solid rgb(var(--c-accent));
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+  transition: transform 140ms ease;
+}
+input[type='range'].yr-range:active::-webkit-slider-thumb {
+  transform: scale(1.18);
 }
 input[type='range'].yr-range:disabled::-webkit-slider-runnable-track {
   background: rgb(var(--c-line));
@@ -149,13 +171,73 @@ input[type='range'].yr-range::-moz-range-progress {
 input[type='range'].yr-range::-moz-range-thumb {
   width: 14px;
   height: 14px;
-  border: none;
+  border: 2px solid rgb(var(--c-accent));
   border-radius: 999px;
   background: #fff;
 }
 
 .page-enter {
-  animation: fade-up 200ms ease-out both;
+  animation: fade-up 260ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+
+/* Children of a staggered container fade in one after another. */
+.stagger-in > * {
+  animation: fade-up 320ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+.stagger-in > *:nth-child(1) {
+  animation-delay: 20ms;
+}
+.stagger-in > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+.stagger-in > *:nth-child(3) {
+  animation-delay: 100ms;
+}
+.stagger-in > *:nth-child(4) {
+  animation-delay: 140ms;
+}
+.stagger-in > *:nth-child(5) {
+  animation-delay: 180ms;
+}
+.stagger-in > *:nth-child(6) {
+  animation-delay: 220ms;
+}
+.stagger-in > *:nth-child(n + 7) {
+  animation-delay: 260ms;
+}
+
+/* Small animated equalizer used for the playing track. */
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  color: rgb(var(--c-accent));
+}
+.eq span {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: bottom;
+  animation: eq-bar 900ms ease-in-out infinite;
+}
+.eq span:nth-child(2) {
+  animation-delay: 140ms;
+}
+.eq span:nth-child(3) {
+  animation-delay: 280ms;
+}
+
+@keyframes eq-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -163,6 +245,7 @@ input[type='range'].yr-range::-moz-range-thumb {
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
 }

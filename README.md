@@ -19,7 +19,7 @@ scratch in phases. Everything below was verified in this environment:
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` (TypeScript, strict) | Pass |
-| `npm run test:run` (Vitest, 10 files) | 68 tests pass |
+| `npm run test:run` (Vitest, 10 files) | 69 tests pass |
 | `npm run build` (Vite production bundle) | Pass (≈100 kB gzipped) |
 | Gradle `assembleDebug` (Java 21, compileSdk 35) | Pass |
 | APK produced, signed with the Android debug key, correct manifest and bundled web assets | Verified (`app-debug.apk`, ≈8.7 MB) |
@@ -77,8 +77,11 @@ already passed.
   of faked. Settings are persisted and re-applied when playback starts.
 
 ### Interface
-- Deep charcoal/midnight palette with violet and electric-blue accents; dark, light and system
-  themes with CSS-variable tokens.
+- Clean white surfaces with fresh emerald/teal accents (light theme by default), plus a green-tinted
+  dark theme and a system option, all driven by CSS-variable tokens.
+- Lightweight motion: staggered screen entrances, animated playing indicator, sliding sheets,
+  scaling dialogs, floating artwork, pulsing ambience, springy button presses and a springy range
+  thumb — all transform/opacity based and disabled under `prefers-reduced-motion`.
 - Home, Music, Videos, Playlists, Settings tabs; persistent mini player; full player; video player.
 - Android back handling: closes sheets/dialogs and the expanded player before leaving a screen,
   then minimises the app from a root tab instead of terminating playback.

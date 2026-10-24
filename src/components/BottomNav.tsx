@@ -33,11 +33,16 @@ export function BottomNav() {
               {({ isActive }) => (
                 <>
                   <span
-                    className={`flex h-8 w-12 items-center justify-center rounded-full transition-colors ${
-                      isActive ? 'bg-accent/15' : ''
+                    className={`flex h-8 w-12 items-center justify-center rounded-full transition-all duration-200 ${
+                      isActive ? 'scale-105 bg-accent/15' : ''
                     }`}
                   >
-                    <Icon size={20} strokeWidth={isActive ? 2.4 : 1.9} aria-hidden="true" />
+                    <Icon
+                      size={20}
+                      strokeWidth={isActive ? 2.4 : 1.9}
+                      aria-hidden="true"
+                      className={isActive ? 'animate-scale-in' : ''}
+                    />
                   </span>
                   {label}
                 </>

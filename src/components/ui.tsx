@@ -91,7 +91,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-line/60 bg-surface/60 px-6 py-10 text-center">
       {icon ? (
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-2 text-accent">
+        <div className="mb-3 flex h-12 w-12 animate-scale-in items-center justify-center rounded-2xl bg-accent/10 text-accent">
           {icon}
         </div>
       ) : null}
@@ -158,7 +158,7 @@ export function Sheet({
         type="button"
         aria-label={t('a11y.close')}
         onClick={onClose}
-        className="absolute inset-0 h-full w-full bg-black/60"
+        className="absolute inset-0 h-full w-full animate-fade-in bg-black/40"
       />
       <div
         role="dialog"
@@ -228,13 +228,13 @@ export function Dialog({
         type="button"
         aria-label={t('a11y.close')}
         onClick={onClose}
-        className="absolute inset-0 h-full w-full bg-black/65"
+        className="absolute inset-0 h-full w-full animate-fade-in bg-black/45"
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
-        className="relative w-full max-w-sm rounded-2xl border border-line/70 bg-surface p-5 shadow-lift"
+        className="relative w-full max-w-sm animate-scale-in rounded-2xl border border-line/70 bg-surface p-5 shadow-lift"
       >
         <h2 id={headingId} className="text-base font-semibold text-ink">
           {title}
@@ -379,7 +379,7 @@ export function Toaster({ toasts, onDismiss }: { toasts: { id: number; message: 
           key={toast.id}
           type="button"
           onClick={() => onDismiss(toast.id)}
-          className={`pointer-events-auto max-w-sm rounded-xl border px-3.5 py-2.5 text-[13px] font-medium shadow-lift ${
+          className={`pointer-events-auto max-w-sm animate-fade-up rounded-xl border px-3.5 py-2.5 text-[13px] font-medium shadow-lift ${
             toast.tone === 'error'
               ? 'border-danger/40 bg-danger/15 text-ink'
               : 'border-line/70 bg-surface text-ink'

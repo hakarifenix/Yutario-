@@ -14,7 +14,7 @@ export interface SettingsData {
 }
 
 const DEFAULTS: SettingsData = {
-  theme: 'dark',
+  theme: 'light',
   language: 'en',
   resumePlayback: true,
   defaultSpeed: 1,

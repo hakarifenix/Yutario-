@@ -1,4 +1,4 @@
-import { MoreVertical, Volume2 } from 'lucide-react';
+import { MoreVertical } from 'lucide-react';
 import type { MediaItem } from '../lib/types';
 import { formatTime } from '../lib/format';
 import { useT } from '../lib/i18n';
@@ -48,7 +48,11 @@ export function TrackRow({
         </span>
         <span className="shrink-0 text-[11px] tabular-nums text-muted">
           {active && playing ? (
-            <Volume2 size={15} className="animate-pulse-soft text-accent" aria-label={t('common.play')} />
+            <span className="eq" aria-label={t('common.play')} role="img">
+              <span />
+              <span />
+              <span />
+            </span>
           ) : (
             formatTime(item.durationMs)
           )}

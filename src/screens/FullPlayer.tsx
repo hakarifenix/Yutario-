@@ -97,9 +97,9 @@ export function FullPlayerScreen() {
   const timerRemaining = sleepTimer.endsAt ? Math.max(0, sleepTimer.endsAt - now) : 0;
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-bg">
-      <div className="pointer-events-none absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-accent/25 blur-[120px]" />
-      <div className="pointer-events-none absolute -bottom-32 right-0 h-[360px] w-[360px] rounded-full bg-accent-2/15 blur-[110px]" />
+    <div className="page-enter relative flex min-h-screen flex-col overflow-hidden bg-bg">
+      <div className="pointer-events-none absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 animate-glow-pulse rounded-full bg-accent/20 blur-[120px]" />
+      <div className="pointer-events-none absolute -bottom-32 right-0 h-[360px] w-[360px] animate-glow-pulse rounded-full bg-accent-2/15 blur-[110px]" />
 
       <div className="relative flex flex-1 flex-col px-5 pb-[calc(env(safe-area-inset-bottom,0px)+18px)] pt-[calc(env(safe-area-inset-top,0px)+12px)]">
         <header className="mb-4 flex items-center justify-between gap-2">
@@ -119,7 +119,7 @@ export function FullPlayerScreen() {
           </IconButton>
         </header>
 
-        <div className="mx-auto mb-6 w-full max-w-[340px]">
+        <div className="mx-auto mb-6 w-full max-w-[340px] animate-float">
           <Artwork
             uri={item.uri}
             size={640}
@@ -148,7 +148,7 @@ export function FullPlayerScreen() {
             }}
             className="tap mt-1 shrink-0 text-accent"
           >
-            <Heart size={22} fill={favorite ? 'currentColor' : 'none'} />
+            <Heart key={String(favorite)} size={22} fill={favorite ? 'currentColor' : 'none'} className="animate-scale-in" />
           </button>
         </div>
 

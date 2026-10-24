@@ -3,11 +3,11 @@ import { useArtwork } from '../lib/artwork';
 import { useT } from '../lib/i18n';
 
 const GRADIENTS = [
-  'from-violet-500/40 to-sky-400/25',
-  'from-indigo-500/40 to-fuchsia-400/25',
-  'from-sky-500/35 to-emerald-400/25',
-  'from-purple-500/40 to-rose-400/25',
-  'from-blue-500/40 to-cyan-300/25',
+  'from-emerald-500/30 to-teal-400/20',
+  'from-green-500/25 to-lime-400/20',
+  'from-teal-500/30 to-emerald-300/20',
+  'from-emerald-600/25 to-cyan-400/15',
+  'from-lime-500/25 to-emerald-400/20',
 ];
 
 function gradientFor(seed: string): string {

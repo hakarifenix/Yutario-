@@ -323,7 +323,9 @@ function StatusPill({ granted, label }: { granted: boolean; label: string }) {
   return (
     <span
       className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold ${
-        granted ? 'bg-emerald-500/15 text-emerald-400' : 'bg-danger/15 text-danger'
+        granted
+          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+          : 'bg-danger/10 text-danger'
       }`}
     >
       {label}

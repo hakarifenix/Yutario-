@@ -11,6 +11,10 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     allowedHosts: previewHost ? [previewHost] : undefined,
+    watch: {
+      // Native/Gradle output must not trigger page reloads in the browser preview.
+      ignored: ['**/android/**', '**/dist/**', '**/artifacts/**'],
+    },
   },
   build: {
     target: 'es2020',

@@ -5,13 +5,13 @@ const config: CapacitorConfig = {
   appName: 'Yutario',
   webDir: 'dist',
   android: {
-    backgroundColor: '#0a0b12',
+    backgroundColor: '#f6fbf8',
     allowMixedContent: false,
   },
   plugins: {
     StatusBar: {
       style: 'DARK',
-      backgroundColor: '#0a0b12',
+      backgroundColor: '#f6fbf8',
       overlaysWebView: false,
     },
   },

@@ -16,6 +16,8 @@
         <item name="android:windowBackground">@color/yutario_background</item>
         <item name="android:statusBarColor">@color/yutario_background</item>
         <item name="android:navigationBarColor">@color/yutario_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 
 
